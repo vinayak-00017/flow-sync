@@ -1,17 +1,21 @@
 "use client";
 import { Button } from "@/components/ui/button";
 import React from "react";
-import { signIn } from "next-auth/react";
+import { signIn, useSession } from "next-auth/react";
 
-const page = () => {
+const Page = () => {
   const handleGoogle = () => {
     signIn("google");
   };
+
+  const { data: session, status, update } = useSession();
   return (
     <main>
       <Button onClick={handleGoogle}>signin</Button>
+      <Button>Create Room</Button>
+      <div>{status}</div>
     </main>
   );
 };
 
-export default page;
+export default Page;
