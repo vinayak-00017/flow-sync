@@ -1,66 +1,70 @@
 "use client";
-import React, { useEffect, useRef } from "react";
-import { Editor } from "@monaco-editor/react";
+import React, { useEffect, useRef, useState } from "react";
+import dynamic from "next/dynamic";
 import { io, Socket } from "socket.io-client";
 import * as Y from "yjs";
-import { MonacoBinding } from "y-monaco";
-import { editor } from "monaco-editor";
+
+// Use dynamic import to avoid SSR issues
+const MonacoEditorComponent = dynamic(() => import("./monaco-editor"), {
+  ssr: false,
+  loading: () => (
+    <div className="h-[600px] flex items-center justify-center border rounded-lg">
+      Loading editor...
+    </div>
+  ),
+});
 
 const CodeEditor = ({ roomId }: { roomId: string }) => {
-  const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
   const socketRef = useRef<Socket | null>(null);
   const ydocRef = useRef<Y.Doc | null>(null);
-  const bindingRef = useRef<MonacoBinding | null>(null);
+  const [isConnected, setIsConnected] = useState(false);
 
   useEffect(() => {
+    // Create YJS doc
     const ydoc = new Y.Doc();
     ydocRef.current = ydoc;
-    const ytext = ydoc.getText("monaco");
 
     // Connect to server
     const socket = io("http://localhost:3001");
     socketRef.current = socket;
 
-    // Join specific room
-    socket.emit("join-room", roomId);
+    socket.on("connect", () => {
+      console.log("Connected to server");
+      setIsConnected(true);
 
-    // Handle document synchronization
-    socket.on("sync-doc", (update: number[]) => {
-      Y.applyUpdate(ydoc, new Uint8Array(update));
+      // Join room
+      socket.emit("join-room", roomId);
     });
 
-    socket.on("doc-update", (update: number[]) => {
-      Y.applyUpdate(ydoc, new Uint8Array(update));
+    socket.on("connect_error", (err) => {
+      console.error("Connection error:", err);
     });
-
-    // Connect editor to YJS if it's already mounted
-    if (editorRef.current) {
-      setupBinding(editorRef.current, ytext, ydoc);
-    }
 
     // Cleanup on unmount
     return () => {
-      if (bindingRef.current) {
-        bindingRef.current.destroy();
+      if (ydocRef.current) {
+        ydocRef.current.destroy();
       }
-      ydoc.destroy();
-      socket.disconnect();
+      if (socketRef.current) {
+        socketRef.current.disconnect();
+      }
     };
   }, [roomId]);
 
-  function handleEditorMount(editor) {
-    editorRef.current = editor;
-    // Connect Monaco editor to YJS
-    // (Additional setup would go here)
-  }
-
   return (
-    <Editor
-      height="600px"
-      defaultLanguage="javascript"
-      defaultValue="// Start coding here"
-      onMount={handleEditorMount}
-    />
+    <div className="w-full">
+      {!isConnected && (
+        <div className="p-2 mb-2 bg-yellow-100 text-yellow-800 rounded">
+          Connecting to collaboration server...
+        </div>
+      )}
+
+      <MonacoEditorComponent
+        roomId={roomId}
+        ydoc={ydocRef.current}
+        socket={socketRef.current}
+      />
+    </div>
   );
 };
 
