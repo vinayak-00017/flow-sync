@@ -3,6 +3,7 @@ import React, { useRef, useEffect } from "react";
 import { Editor } from "@monaco-editor/react";
 import { MonacoBinding } from "y-monaco";
 import * as Y from "yjs";
+import { Awareness } from "y-protocols/awareness";
 import { Socket } from "socket.io-client";
 import { editor as monacoEditor } from "monaco-editor";
 
@@ -26,15 +27,18 @@ const MonacoEditorComponent: React.FC<MonacoEditorProps> = ({
     const ytext = ydoc.getText("monaco");
 
     // Listen for document updates from server
-    socket.on("sync-doc", (update: number[]) => {
-      console.log("Received initial document state");
-      Y.applyUpdate(ydoc, new Uint8Array(update));
-    });
-
-    socket.on("doc-update", (update: number[]) => {
+    const handleDocUpdate = (update: number[]) => {
       console.log("Received document update");
       Y.applyUpdate(ydoc, new Uint8Array(update));
-    });
+    };
+
+    const handleInitialSync = (update: number[]) => {
+      console.log("Received Initial document state");
+      Y.applyUpdate(ydoc, new Uint8Array(update));
+    };
+
+    socket.on("sync-doc", handleInitialSync);
+    socket.on("doc-update", handleDocUpdate);
 
     // Setup editor binding
     const editor = editorRef.current;
@@ -50,10 +54,28 @@ const MonacoEditorComponent: React.FC<MonacoEditorProps> = ({
         );
         bindingRef.current = binding;
 
+        const awareness = new Awareness(ydoc);
+
         // Send updates to server
         ydoc.on("update", (update: Uint8Array) => {
           if (socket && socket.connected) {
+            console.log("Sending document update");
             socket.emit("doc-update", Array.from(update));
+          }
+        });
+
+        // Track selection changes for cursor awareness
+        editor.onDidChangeCursorSelection((e) => {
+          const selection = e.selection;
+          if (socket && socket.connected) {
+            socket.emit("awareness-update", {
+              selection: {
+                startLineNumber: selection.startLineNumber,
+                startCoumn: selection.startColumn,
+                endLineNumber: selection.endLineNumber,
+                endColumn: selection.endColumn,
+              },
+            });
           }
         });
 
@@ -63,9 +85,10 @@ const MonacoEditorComponent: React.FC<MonacoEditorProps> = ({
       }
     }
 
+    // Cleanup
     return () => {
-      socket.off("sync-doc");
-      socket.off("doc-update");
+      socket.off("sync-doc", handleInitialSync);
+      socket.off("doc-update", handleDocUpdate);
       if (bindingRef.current) {
         bindingRef.current.destroy();
       }

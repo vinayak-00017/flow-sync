@@ -4,11 +4,15 @@ import * as Y from "yjs";
 import { getRoomManager } from "./roomManager";
 import { config } from "../config";
 import { AwarenessUpdate } from "../types";
+import { timestamp } from "drizzle-orm/gel-core";
 
 // Setup and configure Socket.io
 export const setupSocketHandlers = (httpServer: HttpServer) => {
   const io = new Server(httpServer, {
-    connectionStateRecovery: {},
+    connectionStateRecovery: {
+      maxDisconnectionDuration: 2 * 60 * 1000, // 2 minutes
+      skipMiddlewares: true,
+    },
     cors: {
       origin: config.clientUrl,
       methods: ["GET", "POST"],
@@ -16,11 +20,30 @@ export const setupSocketHandlers = (httpServer: HttpServer) => {
     },
   });
 
+  // Map to track client IDs to socket IDs
+  const clientSocketMap = new Map();
+
   // Handle socket connections
   io.on("connection", (socket) => {
     console.log("New client connected:", socket.id);
     let currentRoom: string | null = null;
     const roomManager = getRoomManager();
+
+    // Get client ID from auth or connection data
+    const clientId = socket.handshake.auth.clientId || socket.id;
+
+    // Handle document updates
+    socket.on("doc-update", (update) => {
+      if (!currentRoom) return;
+      const { doc } = roomManager.getRoom(currentRoom);
+      try {
+        Y.applyUpdate(doc, new Uint8Array(update));
+        //Broadcast to others in the same room
+        socket.to(currentRoom).emit("doc-update", update);
+      } catch (err) {
+        console.error("Error applying document update:", err);
+      }
+    });
 
     // Join room handler
     socket.on("join-room", (roomId) => {
@@ -33,48 +56,38 @@ export const setupSocketHandlers = (httpServer: HttpServer) => {
       // Join new room
       currentRoom = roomId;
       socket.join(roomId);
-
-      // Add client to room manager
       roomManager.addClient(roomId, socket.id);
 
       // Get room data
-      const { doc, awareness } = roomManager.getRoom(roomId);
+      const { doc } = roomManager.getRoom(roomId);
 
       // Send initial document state
       const initialState = Y.encodeStateAsUpdate(doc);
       socket.emit("sync-doc", Array.from(initialState));
 
-      // Handle document updates
-      socket.on("doc-update", (update) => {
-        Y.applyUpdate(doc, new Uint8Array(update));
-        socket.to(roomId).emit("doc-update", update);
+      // Let otehrs know someone joined
+      socket.to(roomId).emit("user-joined", {
+        userId: socket.id,
+        timestamp: Date.now(),
       });
 
       // Handle awareness (cursor, selection) updates
-      socket.on("awareness-update", (update: AwarenessUpdate) => {
-        if (update && update.clients) {
-          const states = awareness.getStates();
+      socket.on("awareness-update", (data) => {
+        if (!currentRoom) return;
 
-          // Process each client's state from the update
-          Object.entries(update.clients).forEach(([clientId, state]) => {
-            states.set(parseInt(clientId), state);
-          });
+        //Relay to others in the room
+        socket.to(currentRoom).emit("awareness-update", {
+          ...data,
+          userId: socket.id,
+        });
 
-          // Notify others about the change
-          socket.to(roomId).emit("awareness-update", {
-            added: [],
-            update: [parseInt(socket.id)],
-            removed: [],
-          });
-        }
+        // Handle disconnection
+        socket.on("disconnect", () => {
+          if (currentRoom) {
+            roomManager.removeClient(currentRoom, socket.id);
+          }
+        });
       });
-    });
-
-    // Handle disconnection
-    socket.on("disconnect", () => {
-      if (currentRoom) {
-        roomManager.removeClient(currentRoom, socket.id);
-      }
     });
   });
 

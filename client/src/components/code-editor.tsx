@@ -14,7 +14,7 @@ const MonacoEditorComponent = dynamic(() => import("./monaco-editor"), {
   ),
 });
 
-const CodeEditor = ({ roomId }: { roomId: string }) => {
+const CodeEditor = ({ roomId, userId }: { roomId: string; userId: string }) => {
   const socketRef = useRef<Socket | null>(null);
   const ydocRef = useRef<Y.Doc | null>(null);
   const [isConnected, setIsConnected] = useState(false);
@@ -24,8 +24,27 @@ const CodeEditor = ({ roomId }: { roomId: string }) => {
     const ydoc = new Y.Doc();
     ydocRef.current = ydoc;
 
+    const clientId =
+      userId ||
+      localStorage.getItem("clientId") ||
+      `user-${Math.random().toString(36).substring(2, 10)}`;
+    localStorage.setItem("clientId", clientId);
+
     // Connect to server
-    const socket = io("http://localhost:3001");
+    const socket = io("http://localhost:3001", {
+      auth: { clientId },
+      reconnectionAttempts: 5,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 5000,
+      // connection statee recovery
+      transportOptions: {
+        websocket: {
+          extraHeaders: {
+            "x-client-id": clientId,
+          },
+        },
+      },
+    });
     socketRef.current = socket;
 
     socket.on("connect", () => {
@@ -33,7 +52,11 @@ const CodeEditor = ({ roomId }: { roomId: string }) => {
       setIsConnected(true);
 
       // Join room
-      socket.emit("join-room", roomId);
+      socket.emit("join-room", {
+        roomId,
+        clientId,
+        userId,
+      });
     });
 
     socket.on("connect_error", (err) => {
@@ -49,7 +72,7 @@ const CodeEditor = ({ roomId }: { roomId: string }) => {
         socketRef.current.disconnect();
       }
     };
-  }, [roomId]);
+  }, [roomId, userId]);
 
   return (
     <div className="w-full">
