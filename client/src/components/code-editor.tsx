@@ -14,7 +14,13 @@ const MonacoEditorComponent = dynamic(() => import("./monaco-editor"), {
   ),
 });
 
-const CodeEditor = ({ roomId, userId }: { roomId: string; userId: string }) => {
+const CodeEditor = ({
+  roomId,
+  userId,
+}: {
+  roomId: string;
+  userId: string | undefined;
+}) => {
   const socketRef = useRef<Socket | null>(null);
   const ydocRef = useRef<Y.Doc | null>(null);
   const [isConnected, setIsConnected] = useState(false);
@@ -25,7 +31,6 @@ const CodeEditor = ({ roomId, userId }: { roomId: string; userId: string }) => {
     ydocRef.current = ydoc;
 
     const clientId =
-      userId ||
       localStorage.getItem("clientId") ||
       `user-${Math.random().toString(36).substring(2, 10)}`;
     localStorage.setItem("clientId", clientId);
@@ -48,7 +53,7 @@ const CodeEditor = ({ roomId, userId }: { roomId: string; userId: string }) => {
     socketRef.current = socket;
 
     socket.on("connect", () => {
-      console.log("Connected to server");
+      console.log("Connected to server", socket.id);
       setIsConnected(true);
 
       // Join room
@@ -61,6 +66,20 @@ const CodeEditor = ({ roomId, userId }: { roomId: string; userId: string }) => {
 
     socket.on("connect_error", (err) => {
       console.error("Connection error:", err);
+    });
+
+    socket.on("sync-doc", (update) => {
+      console.log("Parent received initial sync", update.length, "bytes");
+      if (ydocRef.current) {
+        Y.applyUpdate(ydocRef.current, new Uint8Array(update));
+      }
+    });
+
+    socket.on("doc-update", (update) => {
+      console.log("Parent received document update", update.length, "bytes");
+      if (ydocRef.current) {
+        Y.applyUpdate(ydocRef.current, new Uint8Array(update));
+      }
     });
 
     // Cleanup on unmount

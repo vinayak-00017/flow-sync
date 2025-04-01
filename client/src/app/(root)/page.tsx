@@ -16,7 +16,7 @@ const Page = () => {
       <Button onClick={handleGoogle}>signin</Button>
       <Button>Create Room</Button>
       <div>{status}</div>
-      <CodeEditor roomId="46545t5464" userId={session?.user.id}></CodeEditor>
+      <CodeEditor roomId="1" userId={session?.user.id}></CodeEditor>
     </main>
   );
 };
