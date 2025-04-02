@@ -22,8 +22,18 @@ const MonacoEditorComponent: React.FC<MonacoEditorProps> = ({
   const bindingRef = useRef<MonacoBinding | null>(null);
 
   useEffect(() => {
-    if (!ydoc || !socket || !editorRef.current) return;
+    console.log("Monaco effect running with:", {
+      hasYDoc: !!ydoc,
+      hasSocket: !!socket,
+      hasEditor: !!editorRef.current,
+      roomId,
+    });
+    if (!ydoc || !socket || !editorRef.current) {
+      console.log("Skipping Monaco bindig setup - dependencies not ready");
+      return;
+    }
 
+    console.log("Setting up Monaco binding for room:", roomId);
     const ytext = ydoc.getText("monaco");
 
     // Listen for document updates from server
@@ -71,7 +81,7 @@ const MonacoEditorComponent: React.FC<MonacoEditorProps> = ({
             socket.emit("awareness-update", {
               selection: {
                 startLineNumber: selection.startLineNumber,
-                startCoumn: selection.startColumn,
+                startColumn: selection.startColumn,
                 endLineNumber: selection.endLineNumber,
                 endColumn: selection.endColumn,
               },
@@ -98,6 +108,10 @@ const MonacoEditorComponent: React.FC<MonacoEditorProps> = ({
   function handleEditorDidMount(editor: monacoEditor.IStandaloneCodeEditor) {
     console.log("Editor mounted");
     editorRef.current = editor;
+
+    // if(ydoc && socket){
+    //   setupBinding
+    // }
   }
 
   return (

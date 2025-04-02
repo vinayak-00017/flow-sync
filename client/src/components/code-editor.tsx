@@ -36,62 +36,62 @@ const CodeEditor = ({
     localStorage.setItem("clientId", clientId);
 
     // Connect to server
-    const socket = io("http://localhost:3001", {
-      auth: { clientId },
-      reconnectionAttempts: 5,
-      reconnectionDelay: 1000,
-      reconnectionDelayMax: 5000,
-      // connection statee recovery
-      transportOptions: {
-        websocket: {
-          extraHeaders: {
-            "x-client-id": clientId,
-          },
-        },
-      },
-    });
-    socketRef.current = socket;
-
-    socket.on("connect", () => {
-      console.log("Connected to server", socket.id);
-      setIsConnected(true);
-
-      // Join room
-      socket.emit("join-room", {
-        roomId,
-        clientId,
-        userId,
+    if (!socketRef.current) {
+      const socket = io("http://localhost:3001", {
+        auth: { clientId },
+        reconnectionAttempts: 5,
+        reconnectionDelay: 1000,
+        reconnectionDelayMax: 5000,
+        // connection statee recovery
+        forceNew: false,
+        timeout: 20000,
       });
-    });
+      socketRef.current = socket;
 
-    socket.on("connect_error", (err) => {
-      console.error("Connection error:", err);
-    });
+      socket.on("connect", () => {
+        console.log("Connected to server", socket.id);
+        setIsConnected(true);
+      });
 
-    socket.on("sync-doc", (update) => {
-      console.log("Parent received initial sync", update.length, "bytes");
-      if (ydocRef.current) {
-        Y.applyUpdate(ydocRef.current, new Uint8Array(update));
-      }
-    });
+      socket.on("connect_error", (err) => {
+        console.error("Connection error:", err);
+      });
 
-    socket.on("doc-update", (update) => {
-      console.log("Parent received document update", update.length, "bytes");
-      if (ydocRef.current) {
-        Y.applyUpdate(ydocRef.current, new Uint8Array(update));
-      }
-    });
+      socket.on("disconnect", (reason) => {
+        console.log(`Socket disconnected: ${reason}`);
+        setIsConnected(false);
+      });
+
+      socket.on("reconnect", (attemptNumber) => {
+        console.log(`Reconnected after ${attemptNumber} attempts`);
+        setIsConnected(true);
+      });
+    }
 
     // Cleanup on unmount
     return () => {
+      if (socketRef.current) {
+        console.log("Component unmounting, disconnecting socket");
+        socketRef.current.disconnect();
+        socketRef.current = null;
+        setIsConnected(false);
+      }
       if (ydocRef.current) {
         ydocRef.current.destroy();
       }
-      if (socketRef.current) {
-        socketRef.current.disconnect();
-      }
     };
-  }, [roomId, userId]);
+  }, []);
+
+  useEffect(() => {
+    const socket = socketRef.current;
+    if (socket && socket.connected && roomId)
+      // Join room
+      socket.emit("join-room", {
+        roomId,
+        clientId: localStorage.getItem("clientId"),
+        userId,
+      });
+  }, [roomId, userId, socketRef.current?.connected]);
 
   return (
     <div className="w-full">

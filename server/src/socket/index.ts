@@ -145,17 +145,20 @@ export const setupSocketHandlers = (httpServer: HttpServer) => {
         });
 
         //Cleanup Timer
-        setTimeout(() => {
-          if (temporaryDisconnects.has(socket.id)) {
-            const disconnectInfo = temporaryDisconnects.get(socket.id);
+        setTimeout(
+          () => {
+            if (temporaryDisconnects.has(socket.id)) {
+              const disconnectInfo = temporaryDisconnects.get(socket.id);
 
-            console.log(
-              `Client ${socket.id} exceeded max disconnection time, removing from room ${currentRoom}`
-            );
-            roomManager.removeClient(disconnectInfo.roomId, socket.id);
-            temporaryDisconnects.delete(socket.id);
-          }
-        }, 2.5 * 1000);
+              console.log(
+                `Client ${socket.id} exceeded max disconnection time, removing from room ${currentRoom}`
+              );
+              roomManager.removeClient(disconnectInfo.roomId, socket.id);
+              temporaryDisconnects.delete(socket.id);
+            }
+          },
+          2.5 * 60 * 1000
+        );
       }
     });
   });
