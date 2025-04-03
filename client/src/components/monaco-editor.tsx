@@ -1,5 +1,5 @@
 "use client";
-import React, { useRef, useEffect } from "react";
+import React, { useRef, useEffect, useState } from "react";
 import { Editor } from "@monaco-editor/react";
 import { MonacoBinding } from "y-monaco";
 import * as Y from "yjs";
@@ -20,99 +20,130 @@ const MonacoEditorComponent: React.FC<MonacoEditorProps> = ({
 }) => {
   const editorRef = useRef<monacoEditor.IStandaloneCodeEditor | null>(null);
   const bindingRef = useRef<MonacoBinding | null>(null);
+  const handlersRegisteredRef = useRef(false);
+  const bindingCreatedRef = useRef(false);
+  const [isEditorMounted, setIsEditorMounted] = useState(false);
 
   useEffect(() => {
-    console.log("Monaco effect running with:", {
+    console.log("Main effect running with:", {
       hasYDoc: !!ydoc,
       hasSocket: !!socket,
       hasEditor: !!editorRef.current,
       roomId,
+      isSocketConnected: socket?.connected,
+      bindingCreated: bindingCreatedRef.current,
     });
-    if (!ydoc || !socket || !editorRef.current) {
-      console.log("Skipping Monaco bindig setup - dependencies not ready");
+    if (!ydoc || !socket || !editorRef.current || !socket.connected) {
+      console.log("Missing dependencies, waiting...");
       return;
     }
 
-    console.log("Setting up Monaco binding for room:", roomId);
-    const ytext = ydoc.getText("monaco");
+    //Join the room explicitly
+    if (roomId) {
+      console.log(`Explicitly joining room: ${roomId}`);
+      socket.emit("join-room", {
+        roomId,
+        clientId: localStorage.getItem("clientId"),
+      });
+    }
 
-    // Listen for document updates from server
-    const handleDocUpdate = (update: number[]) => {
-      console.log("Received document update");
-      Y.applyUpdate(ydoc, new Uint8Array(update));
-    };
-
-    const handleInitialSync = (update: number[]) => {
-      console.log("Received Initial document state");
-      Y.applyUpdate(ydoc, new Uint8Array(update));
-    };
-
-    socket.on("sync-doc", handleInitialSync);
-    socket.on("doc-update", handleDocUpdate);
-
-    // Setup editor binding
-    const editor = editorRef.current;
-    const model = editor.getModel();
-
-    if (model) {
+    // Create binding only once
+    if (!bindingCreatedRef.current && !bindingRef.current) {
+      console.log("Creating Monaco binding...");
       try {
-        const binding = new MonacoBinding(
-          ytext,
-          model,
-          new Set([editor]),
-          null
+        const editor = editorRef.current;
+        const model = editor.getModel();
+        const ytext = ydoc.getText("monaco");
+
+        //Log the initial state
+        console.log(
+          "Initial editor value:",
+          model?.getValue().substring(0, 50)
         );
-        bindingRef.current = binding;
+        console.log("Initial YText value:", ytext.toString().substring(0, 50));
 
-        const awareness = new Awareness(ydoc);
+        if (model) {
+          const binding = new MonacoBinding(
+            ytext,
+            model,
+            new Set([editor]),
+            null
+          );
+          bindingRef.current = binding;
+          bindingCreatedRef.current = true;
 
-        // Send updates to server
-        ydoc.on("update", (update: Uint8Array) => {
-          if (socket && socket.connected) {
-            console.log("Sending document update");
-            socket.emit("doc-update", Array.from(update));
-          }
-        });
-
-        // Track selection changes for cursor awareness
-        editor.onDidChangeCursorSelection((e) => {
-          const selection = e.selection;
-          if (socket && socket.connected) {
-            socket.emit("awareness-update", {
-              selection: {
-                startLineNumber: selection.startLineNumber,
-                startColumn: selection.startColumn,
-                endLineNumber: selection.endLineNumber,
-                endColumn: selection.endColumn,
-              },
-            });
-          }
-        });
-
-        console.log("Monaco binding created successfully");
+          ytext.observe(() => {
+            console.log("YText changed:", ytext.toString().substring(0, 50));
+            console.log("Editor value:", model.getValue().substring(0, 50));
+          });
+          console.log("Binding created successfully!");
+        }
       } catch (error) {
-        console.error("Error creating Monaco binding:", error);
+        console.error("Failed to create binding:", error);
       }
     }
 
-    // Cleanup
+    // Register socket handlers if not already done
+    if (!handlersRegisteredRef.current) {
+      console.log("Registering socket event handlers");
+
+      const handleDocUpdate = (update: number[]) => {
+        console.log("📥 Received document update, bytes:", update.length);
+        try {
+          Y.applyUpdate(ydoc, new Uint8Array(update));
+          console.log("✅ Applied update to YDoc!");
+        } catch (err) {
+          console.error("❌ Error applying update:", err);
+        }
+      };
+      const handleInitialSync = (update: number[]) => {
+        console.log(
+          "📜 Received initial document state, bytes:",
+          update.length
+        );
+        try {
+          Y.applyUpdate(ydoc, new Uint8Array(update));
+          console.log("✅ Applied initial state to YDoc!");
+        } catch (err) {
+          console.error("❌ Error applying initial state:", err);
+        }
+      };
+      socket.on("sync-doc", handleInitialSync);
+      socket.on("doc-update", handleDocUpdate);
+      handlersRegisteredRef.current = true;
+
+      // Set up document update emission
+      ydoc.on("update", (update: Uint8Array) => {
+        if (socket && socket.connected) {
+          console.log("📤 Sending document update, bytes:", update.length);
+          socket.emit("doc-update", Array.from(update));
+        } else {
+          console.warn("⚠️ Can't send update - socket disconnected");
+        }
+      });
+    }
+    //  Cleanup on unmount
     return () => {
-      socket.off("sync-doc", handleInitialSync);
-      socket.off("doc-update", handleDocUpdate);
-      if (bindingRef.current) {
-        bindingRef.current.destroy();
+      if (handlersRegisteredRef.current) {
+        console.log("Cleaning up socket handlers and binding");
+        socket.off("sync-doc");
+        socket.off("doc-update");
+
+        if (bindingRef.current) {
+          bindingRef.current.destroy();
+          bindingRef.current = null;
+        }
+
+        handlersRegisteredRef.current = false;
       }
     };
-  }, [ydoc, socket, roomId]);
+  }, [ydoc, socket, roomId, socket?.connected, isEditorMounted]);
 
-  function handleEditorDidMount(editor: monacoEditor.IStandaloneCodeEditor) {
-    console.log("Editor mounted");
+  const handleEditorDidMount = (editor: monacoEditor.IStandaloneCodeEditor) => {
+    console.log("🖥️ Editor mounted successfully!");
     editorRef.current = editor;
-
-    // if(ydoc && socket){
-    //   setupBinding
-    // }
-  }
+    setIsEditorMounted(true);
+  };
 
   return (
     <div className="border rounded-lg overflow-hidden w-full h-[600px]">

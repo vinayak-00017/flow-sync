@@ -3,6 +3,7 @@ import React, { useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { io, Socket } from "socket.io-client";
 import * as Y from "yjs";
+import { Awareness } from "y-protocols/awareness.js";
 
 // Use dynamic import to avoid SSR issues
 const MonacoEditorComponent = dynamic(() => import("./monaco-editor"), {
@@ -14,7 +15,7 @@ const MonacoEditorComponent = dynamic(() => import("./monaco-editor"), {
   ),
 });
 
-const CodeEditor = ({
+const SocketSetup = ({
   roomId,
   userId,
 }: {
@@ -24,16 +25,30 @@ const CodeEditor = ({
   const socketRef = useRef<Socket | null>(null);
   const ydocRef = useRef<Y.Doc | null>(null);
   const [isConnected, setIsConnected] = useState(false);
+  const awarenessRef = useRef<Awareness | null>(null);
 
   useEffect(() => {
     // Create YJS doc
     const ydoc = new Y.Doc();
     ydocRef.current = ydoc;
 
+    //Create awareness instance
+    const awareness = new Awareness(ydoc);
+    awarenessRef.current = awareness;
+
     const clientId =
       localStorage.getItem("clientId") ||
       `user-${Math.random().toString(36).substring(2, 10)}`;
     localStorage.setItem("clientId", clientId);
+
+    //Set local state
+    // awareness.setLocalState({
+    //   user:{
+    //     name: userId || 'Anonymous',
+    //     color: getRandomColor(),
+    //     id: clientId
+    //   }
+    // })
 
     // Connect to server
     if (!socketRef.current) {
@@ -110,4 +125,4 @@ const CodeEditor = ({
   );
 };
 
-export default CodeEditor;
+export default SocketSetup;

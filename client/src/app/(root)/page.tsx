@@ -2,21 +2,21 @@
 import { Button } from "@/components/ui/button";
 import React from "react";
 import { signIn, useSession } from "next-auth/react";
-import CodeEditor from "@/components/code-editor";
+import SocketSetup from "@/components/socket-setup";
 
 const Page = () => {
   const handleGoogle = () => {
     signIn("google");
   };
 
-  const { data: session, status, update } = useSession();
+  const { data: session, status } = useSession();
 
   return (
     <main>
       <Button onClick={handleGoogle}>signin</Button>
       <Button>Create Room</Button>
       <div>{status}</div>
-      <CodeEditor roomId="1" userId={session?.user.id}></CodeEditor>
+      <SocketSetup roomId="1" userId={session?.user.id}></SocketSetup>
     </main>
   );
 };
