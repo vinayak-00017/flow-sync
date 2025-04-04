@@ -120,3 +120,20 @@
     @apply bg-background text-foreground;
   }
 }
+
+.remote-cursor {
+  z-index: 100 !important;
+  pointer-events: none !important;
+  position: absolute;
+}
+
+.remote-cursor-tooltip {
+  z-index: 101 !important;
+  pointer-events: none !important;
+  white-space: nowrap;
+}
+
+/* Fix for Monaco editor layers */
+.monaco-editor .overflow-guard {
+  overflow: visible !important;
+}

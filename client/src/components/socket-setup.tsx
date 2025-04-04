@@ -42,13 +42,13 @@ const SocketSetup = ({
     localStorage.setItem("clientId", clientId);
 
     //Set local state
-    // awareness.setLocalState({
-    //   user:{
-    //     name: userId || 'Anonymous',
-    //     color: getRandomColor(),
-    //     id: clientId
-    //   }
-    // })
+    awareness.setLocalState({
+      user: {
+        name: userId || "Anonymous",
+        color: getRandomColor(),
+        id: clientId,
+      },
+    });
 
     // Connect to server
     if (!socketRef.current) {
@@ -95,7 +95,7 @@ const SocketSetup = ({
         ydocRef.current.destroy();
       }
     };
-  }, []);
+  }, [userId]);
 
   useEffect(() => {
     const socket = socketRef.current;
@@ -107,6 +107,22 @@ const SocketSetup = ({
         userId,
       });
   }, [roomId, userId, socketRef.current?.connected]);
+
+  function getRandomColor(): string {
+    const colors = [
+      "#FF5733", // Coral/Red
+      "#33FF57", // Green
+      "#3357FF", // Blue
+      "#F033FF", // Magenta
+      "#FF33F0", // Pink
+      "#33FFF0", // Cyan
+      "#F0FF33", // Yellow
+      "#FF8833", // Orange
+      "#8833FF", // Purple
+      "#33FFAA", // Teal
+    ];
+    return colors[Math.floor(Math.random() * colors.length)];
+  }
 
   return (
     <div className="w-full">

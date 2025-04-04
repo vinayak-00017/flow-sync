@@ -110,7 +110,6 @@ export const setupSocketHandlers = (httpServer: HttpServer) => {
     // Handle awareness (cursor, selection) updates
     socket.on("awareness-update", (data) => {
       if (!currentRoom) return;
-
       //Relay to others in the room
       socket.to(currentRoom).emit("awareness-update", {
         ...data,
